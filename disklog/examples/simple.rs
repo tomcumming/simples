@@ -4,5 +4,9 @@ use tokio::prelude::*;
 
 #[tokio::main]
 async fn main() {
-    disklog::Disklog::open("testdb").await.unwrap();
+    let disklog::OpenedLog {
+        writer,
+        reader_factory,
+        recovered,
+    } = disklog::open_log("testdb").await.unwrap();
 }
