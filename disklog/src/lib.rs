@@ -44,19 +44,16 @@ pub async fn open_log(path: impl AsRef<Path>) -> Result<OpenedLog, OpenError> {
     let (tail_file, tail_pos) = open_tail_file(&path).await?;
     let (log_file, recovered) = open_log_file(&path, tail_pos).await?;
 
-    let (tail_pos_sender, tail_pos_recv) = tokio::sync::watch::channel(tail_pos);
+    let (tail_sender, tail_recv) = tokio::sync::watch::channel(tail_pos);
 
     Ok(OpenedLog {
         writer: Writer {
             log_file,
             tail_file,
-            tail_pos_sender,
+            tail_sender,
             tail_pos,
         },
-        reader_factory: ReaderFactory {
-            path,
-            tail_pos_recv,
-        },
+        reader_factory: ReaderFactory { path, tail_recv },
         recovered,
     })
 }

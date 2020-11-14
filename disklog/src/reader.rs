@@ -30,12 +30,12 @@ impl std::error::Error for Error {}
 
 pub struct ReaderFactory {
     pub(crate) path: Box<Path>,
-    pub(crate) tail_pos_recv: tokio::sync::watch::Receiver<LogPosition>,
+    pub(crate) tail_recv: tokio::sync::watch::Receiver<LogPosition>,
 }
 
 pub struct Reader {
     file: File,
-    tail_pos_recv: tokio::sync::watch::Receiver<LogPosition>,
+    tail_recv: tokio::sync::watch::Receiver<LogPosition>,
     pos: LogPosition,
 }
 
@@ -78,10 +78,11 @@ impl ReaderFactory {
             .open(&path)
             .await
             .map_err(|e| Error::Io(Box::new(e)))?;
+        let tail_recv = self.tail_recv.clone();
 
         Ok(Reader {
             file,
-            tail_pos_recv: self.tail_pos_recv.clone(),
+            tail_recv,
             pos: position,
         })
     }
@@ -119,26 +120,21 @@ impl Reader {
     }
 
     pub async fn next<'a>(&'a mut self, wait_for_more: bool) -> Result<Option<LogItem<'a>>, Error> {
-        let log_tail_pos: LogPosition = { *self.tail_pos_recv.borrow() };
-        if log_tail_pos <= self.pos {
-            if wait_for_more {
-                self.tail_pos_recv
-                    .changed()
-                    .await
-                    .map_err(|e| Error::Io(Box::new(e)))?;
+        let mut log_tail: LogPosition = *self.tail_recv.borrow();
 
-                let changed_tail_pos: LogPosition = { *self.tail_pos_recv.borrow() };
-                if log_tail_pos == changed_tail_pos {
-                    // The writer has closed
-                    Ok(None)
-                } else {
-                    self.read_item().await.map(|li| Some(li))
+        while log_tail <= self.pos && wait_for_more {
+            match self.tail_recv.changed().await {
+                Err(_) => return Ok(None),
+                Ok(()) => {
+                    log_tail = *self.tail_recv.borrow();
                 }
-            } else {
-                Ok(None)
             }
-        } else {
+        }
+
+        if self.pos < log_tail {
             self.read_item().await.map(|li| Some(li))
+        } else {
+            Ok(None)
         }
     }
 }

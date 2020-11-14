@@ -9,7 +9,7 @@ use crate::LogPosition;
 pub struct Writer {
     pub(crate) log_file: tokio::fs::File,
     pub(crate) tail_file: tokio::fs::File,
-    pub(crate) tail_pos_sender: tokio::sync::watch::Sender<u64>,
+    pub(crate) tail_sender: tokio::sync::watch::Sender<LogPosition>,
     pub(crate) tail_pos: u64,
 }
 
@@ -109,7 +109,7 @@ impl Writer {
 
         self.tail_pos = new_tail_pos;
 
-        self.tail_pos_sender
+        self.tail_sender
             .send(new_tail_pos)
             .map_err(|e| Error::Io(Box::new(e)))?;
 
