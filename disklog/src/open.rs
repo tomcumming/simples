@@ -72,7 +72,6 @@ pub async fn open_tail_file(path: &Path) -> Result<(tokio::fs::File, LogPosition
     } else {
         Err(OpenError::CorruptTailPosition)?
     };
-    println!("position {} {:?}", position, contents);
     Ok((tail_file, position))
 }
 
@@ -100,10 +99,7 @@ pub async fn open_log_file(
         .await
         .map_err(|e| OpenError::Io(Box::new(e)))?;
 
-    println!("actual pos {}", actual_tail_pos);
-
     if actual_tail_pos < expected_tail_pos {
-        println!("{} {}", actual_tail_pos, expected_tail_pos);
         Err(OpenError::LogTooSmall)?;
     }
 

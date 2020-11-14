@@ -2,20 +2,17 @@ mod checksum;
 mod open;
 
 pub mod writer;
+pub mod reader;
 
 use std::path::{Path};
 
 use writer::Writer;
+use reader::ReaderFactory;
 use open::{open_log_file, open_tail_file};
 
 pub(crate) const U64SIZE: usize = std::mem::size_of::<u64>();
 
 pub type LogPosition = u64;
-
-pub struct ReaderFactory {
-    path: Box<Path>,
-    tail_pos_recv: tokio::sync::watch::Receiver<LogPosition>,
-}
 
 #[derive(Debug)]
 pub enum OpenError {
