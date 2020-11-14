@@ -18,6 +18,7 @@ pub type LogPosition = u64;
 pub enum OpenError {
     Io(Box<dyn std::error::Error>),
     CorruptTailPosition,
+    /// Indicates a corrupt or mismatched logfile relative to the tail position file.
     LogTooSmall,
 }
 
@@ -36,6 +37,8 @@ impl std::error::Error for OpenError {}
 pub struct OpenedLog {
     pub writer: Writer,
     pub reader_factory: ReaderFactory,
+    /// Indicates that there was a partial write before the database crashed or was terminated
+    /// without the chance to shutdown. This partial item will be discarded.
     pub recovered: bool,
 }
 

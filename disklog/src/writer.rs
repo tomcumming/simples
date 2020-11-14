@@ -16,6 +16,7 @@ pub struct Writer {
 #[derive(Debug)]
 pub enum Error {
     Io(Box<dyn std::error::Error>),
+    /// Log items are limited to 2^32 bytes.
     ItemTooLarge,
 }
 
@@ -101,7 +102,7 @@ impl Writer {
     pub async fn append<Contents: AsyncRead + Unpin>(
         &mut self,
         contents: &mut Contents,
-    ) -> Result<u64, Error> {
+    ) -> Result<LogPosition, Error> {
         let old_tail_pos = self.tail_pos;
 
         let new_tail_pos = self.append_item(contents).await?;

@@ -14,6 +14,7 @@ use crate::LogPosition;
 #[derive(Debug)]
 pub enum Error {
     Io(Box<dyn std::error::Error>),
+    /// Indicates that a read position was not aligned to an item, or the log is corrupt.
     InvalidItemChecksum,
 }
 
@@ -47,8 +48,13 @@ pub struct LogItem<'a> {
 }
 
 impl LogItem<'_> {
-    pub fn pos(&self) -> LogPosition {
+    pub fn position(&self) -> LogPosition {
         self.pos
+    }
+
+    /// Returns the length of the contents in bytes.
+    pub fn len(&self) -> u32 {
+        self.len
     }
 }
 

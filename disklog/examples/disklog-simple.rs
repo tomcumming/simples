@@ -35,7 +35,7 @@ async fn reader_task(name: &'static str, mut reader: disklog::reader::Reader, wa
             Some(mut item) => {
                 let mut contents = String::new();
                 item.read_to_string(&mut contents).await.unwrap();
-                println!("Reader {} read {}: '{}'", name, item.pos(), contents);
+                println!("Reader {} read {}: '{}'", name, item.position(), contents);
             }
         }
     }
