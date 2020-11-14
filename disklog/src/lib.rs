@@ -1,14 +1,14 @@
 mod checksum;
 mod open;
 
-pub mod writer;
 pub mod reader;
+pub mod writer;
 
-use std::path::{Path};
+use std::path::Path;
 
-use writer::Writer;
-use reader::ReaderFactory;
 use open::{open_log_file, open_tail_file};
+use reader::ReaderFactory;
+use writer::Writer;
 
 pub(crate) const U64SIZE: usize = std::mem::size_of::<u64>();
 

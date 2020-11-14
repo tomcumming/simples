@@ -1,13 +1,11 @@
 use std::path::{Path, PathBuf};
 
-use tokio::io::{AsyncSeekExt, AsyncWriteExt, AsyncReadExt};
 use tokio::fs::File;
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
-use crate::{ OpenError, LogPosition, U64SIZE };
+use crate::{LogPosition, OpenError, U64SIZE};
 
-async fn read_log_position(
-    tail_file: &mut File,
-) -> Result<LogPosition, OpenError> {
+async fn read_log_position(tail_file: &mut File) -> Result<LogPosition, OpenError> {
     tail_file
         .seek(tokio::io::SeekFrom::Start(0))
         .await
