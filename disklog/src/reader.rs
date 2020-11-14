@@ -126,7 +126,14 @@ impl Reader {
                     .changed()
                     .await
                     .map_err(|e| Error::Io(Box::new(e)))?;
-                self.read_item().await.map(|li| Some(li))
+
+                let changed_tail_pos: LogPosition = { *self.tail_pos_recv.borrow() };
+                if log_tail_pos == changed_tail_pos {
+                    // The writer has closed
+                    Ok(None)
+                } else {
+                    self.read_item().await.map(|li| Some(li))
+                }
             } else {
                 Ok(None)
             }
