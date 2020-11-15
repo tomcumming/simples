@@ -1,15 +1,15 @@
+mod appendqueue;
 mod error;
 mod topicname;
-mod writequeue;
 
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use std::net::SocketAddr;
 use std::path::Path;
 
+use crate::appendqueue::AppendRequest;
 use crate::error::{BoxedError, Error};
 use crate::topicname::TopicName;
-use crate::writequeue::WriteRequest;
 
 fn parse_path_parts<'a>(path: &'a str) -> Box<[&'a str]> {
     let mut path_parts = path.split("/").skip(1).collect::<Vec<_>>();
@@ -43,7 +43,10 @@ async fn append_item(_req: Request<Body>, name: &str) -> Result<Response<Body>, 
     todo!()
 }
 
-async fn handle(req: Request<Body>) -> Result<Response<Body>, BoxedError> {
+async fn handle(
+    req: Request<Body>,
+    _append_writer: tokio::sync::mpsc::Sender<AppendRequest>,
+) -> Result<Response<Body>, BoxedError> {
     let path_parts = parse_path_parts(req.uri().path());
 
     match (req.method(), path_parts.as_ref()) {
@@ -65,10 +68,17 @@ async fn handle(req: Request<Body>) -> Result<Response<Body>, BoxedError> {
 
 #[tokio::main]
 async fn main() {
-    let (_send_write, _recv_write) = tokio::sync::mpsc::channel::<WriteRequest>(1);
+    let (append_writer, _append_recv) = tokio::sync::mpsc::channel::<AppendRequest>(1);
 
-    let make_svc =
-        make_service_fn(|_conn| async { Ok::<_, BoxedError>(service_fn(|req| handle(req))) });
+    let make_svc = make_service_fn(move |_conn| {
+        let append_writer = append_writer.clone();
+        async move {
+            Ok::<_, BoxedError>(service_fn(move |req| {
+                let append_writer = append_writer.clone();
+                handle(req, append_writer)
+            }))
+        }
+    });
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
