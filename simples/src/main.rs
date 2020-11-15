@@ -1,18 +1,38 @@
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
-use std::{convert::Infallible, net::SocketAddr};
+use std::net::SocketAddr;
 
-async fn index_page(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
+type BoxedError = Box<dyn std::error::Error + Sync + Send>;
+
+fn parse_path_parts<'a>(path: &'a str) -> Box<[&'a str]> {
+    let mut path_parts = path.split("/").skip(1).collect::<Vec<_>>();
+    if path_parts.last() == Some(&"") {
+        path_parts.pop();
+    }
+    path_parts.into_boxed_slice()
+}
+
+async fn index_page(_req: Request<Body>) -> Result<Response<Body>, BoxedError> {
     Ok(Response::new(
         format!("Simples ver. {}", env!("CARGO_PKG_VERSION")).into(),
     ))
 }
 
-async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
-    let path_parts = req.uri().path().split("/").skip(1).collect::<Vec<_>>();
+async fn create_topic(_req: Request<Body>, name: &str) -> Result<Response<Body>, BoxedError> {
+    Ok(Response::new(
+        format!("Here we would create the new topic '{}'", name).into(),
+    ))
+}
 
-    match (req.method(), path_parts.as_slice()) {
+async fn handle(req: Request<Body>) -> Result<Response<Body>, BoxedError> {
+    let path_parts = parse_path_parts(req.uri().path());
+
+    match (req.method(), path_parts.as_ref()) {
         (&Method::GET, [""]) => index_page(req).await,
+        (&Method::PUT, ["topic", name]) => {
+            let name = name.to_string();
+            create_topic(req, name.as_ref()).await
+        }
         _ => Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)
             .body("404".into())
@@ -24,7 +44,7 @@ async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 async fn main() {
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
-    let make_svc = make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(handle)) });
+    let make_svc = make_service_fn(|_conn| async { Ok::<_, BoxedError>(service_fn(handle)) });
 
     let server = Server::bind(&addr).serve(make_svc);
 
