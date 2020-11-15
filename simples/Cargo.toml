@@ -1,0 +1,12 @@
+[package]
+name = "simples"
+version = "0.1.0"
+authors = ["Tom Cumming <mail@tomcumming.co.uk>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "0.3.3", features = ["full"] }
+# TODO pin to next release so we can use tokio 0.3
+hyper = { git = "https://github.com/hyperium/hyper", rev = "b3b8010e1c6eadc2769103e13f1c1d8cca521a5b" }

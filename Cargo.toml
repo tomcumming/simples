@@ -1,5 +1,6 @@
 [workspace]
 
 members = [
-    "disklog"
+    "disklog",
+    "simples",
 ]
