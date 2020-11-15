@@ -1,6 +1,13 @@
+mod error;
+mod topicname;
+
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use std::net::SocketAddr;
+use std::path::Path;
+
+use crate::error::Error;
+use crate::topicname::TopicName;
 
 type BoxedError = Box<dyn std::error::Error + Sync + Send>;
 
@@ -19,9 +26,17 @@ async fn index_page(_req: Request<Body>) -> Result<Response<Body>, BoxedError> {
 }
 
 async fn create_topic(_req: Request<Body>, name: &str) -> Result<Response<Body>, BoxedError> {
-    Ok(Response::new(
-        format!("Here we would create the new topic '{}'", name).into(),
-    ))
+    let topic_name = TopicName::parse(name).ok_or(Error::InvalidTopicName)?;
+
+    let topic_path = Path::new("topics").join(topic_name.to_str());
+
+    let metadata = tokio::fs::metadata(&topic_path).await;
+    if metadata.is_ok() {
+        Ok(Response::new("false".into()))
+    } else {
+        tokio::fs::create_dir_all(&topic_path).await?;
+        Ok(Response::new("true".into()))
+    }
 }
 
 async fn handle(req: Request<Body>) -> Result<Response<Body>, BoxedError> {
