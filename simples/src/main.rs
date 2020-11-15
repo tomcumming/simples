@@ -1,15 +1,15 @@
 mod error;
 mod topicname;
+mod writequeue;
 
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use std::net::SocketAddr;
 use std::path::Path;
 
-use crate::error::Error;
+use crate::error::{BoxedError, Error};
 use crate::topicname::TopicName;
-
-type BoxedError = Box<dyn std::error::Error + Sync + Send>;
+use crate::writequeue::WriteRequest;
 
 fn parse_path_parts<'a>(path: &'a str) -> Box<[&'a str]> {
     let mut path_parts = path.split("/").skip(1).collect::<Vec<_>>();
@@ -39,6 +39,10 @@ async fn create_topic(_req: Request<Body>, name: &str) -> Result<Response<Body>,
     }
 }
 
+async fn append_item(_req: Request<Body>, name: &str) -> Result<Response<Body>, BoxedError> {
+    todo!()
+}
+
 async fn handle(req: Request<Body>) -> Result<Response<Body>, BoxedError> {
     let path_parts = parse_path_parts(req.uri().path());
 
@@ -47,6 +51,10 @@ async fn handle(req: Request<Body>) -> Result<Response<Body>, BoxedError> {
         (&Method::PUT, ["topic", name]) => {
             let name = name.to_string();
             create_topic(req, name.as_ref()).await
+        }
+        (&Method::POST, ["topic", name, "items"]) => {
+            let name = name.to_string();
+            append_item(req, name.as_ref()).await
         }
         _ => Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)
@@ -57,9 +65,12 @@ async fn handle(req: Request<Body>) -> Result<Response<Body>, BoxedError> {
 
 #[tokio::main]
 async fn main() {
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let (_send_write, _recv_write) = tokio::sync::mpsc::channel::<WriteRequest>(1);
 
-    let make_svc = make_service_fn(|_conn| async { Ok::<_, BoxedError>(service_fn(handle)) });
+    let make_svc =
+        make_service_fn(|_conn| async { Ok::<_, BoxedError>(service_fn(|req| handle(req))) });
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
     let server = Server::bind(&addr).serve(make_svc);
 
