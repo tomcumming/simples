@@ -68,11 +68,16 @@ async fn append_item(
 
     append_writer.send(request).await?;
     let append_result = result_recv.await?;
-    let pos = append_result?;
 
-    Ok(Response::builder()
-        .header("Content-Type", "application/json")
-        .body(pos.to_string().into())?)
+    match append_result {
+        Err(appendqueue::Error::TopicDoesNotExist) => Ok(Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body("Topic does not exist".into())?),
+        Err(e) => Err(e)?,
+        Ok(pos) => Ok(Response::builder()
+            .header("Content-Type", "application/json")
+            .body(pos.to_string().into())?),
+    }
 }
 
 async fn handle(
@@ -114,12 +119,15 @@ async fn main() {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
-    let ((), server_result) = tokio::join!(
+    let (handle_appends_result, server_result) = tokio::join!(
         appendqueue::handle_appends(append_recv),
         Server::bind(&addr).serve(make_svc)
     );
 
     if let Err(e) = server_result {
         eprintln!("server error: {}", e);
+    }
+    if let Err(e) = handle_appends_result {
+        eprintln!("Append handler error: {}", e);
     }
 }
