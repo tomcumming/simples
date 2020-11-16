@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub struct TopicName(String);
 
 const MAX_LENGTH: usize = 32;

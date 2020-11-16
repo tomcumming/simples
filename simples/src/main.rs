@@ -7,6 +7,8 @@ use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use std::net::SocketAddr;
 use std::path::Path;
 
+use disklog::LogPosition;
+
 use crate::appendqueue::AppendRequest;
 use crate::error::{BoxedError, Error};
 use crate::topicname::TopicName;
@@ -39,25 +41,50 @@ async fn create_topic(_req: Request<Body>, name: &str) -> Result<Response<Body>,
     }
 }
 
-async fn append_item(_req: Request<Body>, name: &str) -> Result<Response<Body>, BoxedError> {
-    todo!()
+async fn append_item(
+    req: Request<Body>,
+    append_writer: tokio::sync::mpsc::Sender<AppendRequest>,
+    name: &str,
+) -> Result<Response<Body>, BoxedError> {
+    let topic_name = match topicname::TopicName::parse(name) {
+        Some(topic_name) => topic_name,
+        None => {
+            return Ok(Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body("Invalid topic name".into())?)
+        }
+    };
+
+    let (result_sender, result_recv) = tokio::sync::oneshot::channel();
+
+    let request = AppendRequest {
+        topic_name,
+        body: req.into_body(),
+        result_sender,
+    };
+
+    append_writer.send(request).await?;
+    let append_result = result_recv.await?;
+    let pos = append_result?;
+
+    Ok(Response::new(pos.to_string().into()))
 }
 
 async fn handle(
     req: Request<Body>,
-    _append_writer: tokio::sync::mpsc::Sender<AppendRequest>,
+    append_writer: tokio::sync::mpsc::Sender<AppendRequest>,
 ) -> Result<Response<Body>, BoxedError> {
     let path_parts = parse_path_parts(req.uri().path());
 
     match (req.method(), path_parts.as_ref()) {
-        (&Method::GET, [""]) => index_page(req).await,
+        (&Method::GET, []) => index_page(req).await,
         (&Method::PUT, ["topic", name]) => {
             let name = name.to_string();
             create_topic(req, name.as_ref()).await
         }
         (&Method::POST, ["topic", name, "items"]) => {
             let name = name.to_string();
-            append_item(req, name.as_ref()).await
+            append_item(req, append_writer, name.as_ref()).await
         }
         _ => Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)
@@ -68,7 +95,7 @@ async fn handle(
 
 #[tokio::main]
 async fn main() {
-    let (append_writer, _append_recv) = tokio::sync::mpsc::channel::<AppendRequest>(1);
+    let (append_writer, append_recv) = tokio::sync::mpsc::channel::<AppendRequest>(1);
 
     let make_svc = make_service_fn(move |_conn| {
         let append_writer = append_writer.clone();
@@ -82,9 +109,12 @@ async fn main() {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
-    let server = Server::bind(&addr).serve(make_svc);
+    let ((), server_result) = tokio::join!(
+        appendqueue::handle_appends(append_recv),
+        Server::bind(&addr).serve(make_svc)
+    );
 
-    if let Err(e) = server.await {
+    if let Err(e) = server_result {
         eprintln!("server error: {}", e);
     }
 }

@@ -5,6 +5,7 @@ use disklog::LogPosition;
 use crate::error::BoxedError;
 use crate::topicname::TopicName;
 
+#[derive(Debug)]
 pub struct AppendRequest {
     pub topic_name: TopicName,
     pub body: Body,
