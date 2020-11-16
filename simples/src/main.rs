@@ -33,12 +33,15 @@ async fn create_topic(_req: Request<Body>, name: &str) -> Result<Response<Body>,
     let topic_path = Path::new("topics").join(topic_name.to_str());
 
     let metadata = tokio::fs::metadata(&topic_path).await;
-    if metadata.is_ok() {
-        Ok(Response::new("false".into()))
+    let body = if metadata.is_ok() {
+        "false"
     } else {
         tokio::fs::create_dir_all(&topic_path).await?;
-        Ok(Response::new("true".into()))
-    }
+        "true"
+    };
+    Ok(Response::builder()
+        .header("Content-Type", "application/json")
+        .body(body.into())?)
 }
 
 async fn append_item(
@@ -67,7 +70,9 @@ async fn append_item(
     let append_result = result_recv.await?;
     let pos = append_result?;
 
-    Ok(Response::new(pos.to_string().into()))
+    Ok(Response::builder()
+        .header("Content-Type", "application/json")
+        .body(pos.to_string().into())?)
 }
 
 async fn handle(
