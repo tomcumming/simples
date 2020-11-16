@@ -1,17 +1,29 @@
-mod appendqueue;
+mod append;
 mod error;
 mod topicname;
 
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Method, Request, Response, Server, StatusCode};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::Path;
+use std::sync::Arc;
+
+use hyper::service::{make_service_fn, service_fn};
+use hyper::{Body, Method, Request, Response, Server, StatusCode};
+use tokio::sync::RwLock;
 
 use disklog::LogPosition;
 
-use crate::appendqueue::AppendRequest;
 use crate::error::{BoxedError, Error};
 use crate::topicname::TopicName;
+
+struct TopicState {
+    writer: RwLock<disklog::writer::Writer>,
+    reader_factory: disklog::reader::ReaderFactory,
+}
+
+struct ServerState {
+    topics: RwLock<HashMap<TopicName, Arc<TopicState>>>,
+}
 
 fn parse_path_parts<'a>(path: &'a str) -> Box<[&'a str]> {
     let mut path_parts = path.split("/").skip(1).collect::<Vec<_>>();
@@ -46,7 +58,7 @@ async fn create_topic(_req: Request<Body>, name: &str) -> Result<Response<Body>,
 
 async fn append_item(
     req: Request<Body>,
-    append_writer: tokio::sync::mpsc::Sender<AppendRequest>,
+    server_state: Arc<ServerState>,
     name: &str,
 ) -> Result<Response<Body>, BoxedError> {
     let topic_name = match topicname::TopicName::parse(name) {
@@ -58,31 +70,22 @@ async fn append_item(
         }
     };
 
-    let (result_sender, result_recv) = tokio::sync::oneshot::channel();
-
-    let request = AppendRequest {
-        topic_name,
-        body: req.into_body(),
-        result_sender,
-    };
-
-    append_writer.send(request).await?;
-    let append_result = result_recv.await?;
-
-    match append_result {
-        Err(appendqueue::Error::TopicDoesNotExist) => Ok(Response::builder()
-            .status(StatusCode::BAD_REQUEST)
-            .body("Topic does not exist".into())?),
-        Err(e) => Err(e)?,
-        Ok(pos) => Ok(Response::builder()
+    if let Some(topic_state) = server_state.topics.read().await.get(&topic_name) {
+        let mut writer = topic_state.writer.write().await;
+        // TODO replace me with AsyncRead body...
+        let mut contents: &[u8] = b"Hello World!";
+        let pos = writer.append(&mut contents).await?;
+        Ok(Response::builder()
             .header("Content-Type", "application/json")
-            .body(pos.to_string().into())?),
+            .body(pos.to_string().into())?)
+    } else {
+        todo!("lock topics and add new topic state")
     }
 }
 
 async fn handle(
     req: Request<Body>,
-    append_writer: tokio::sync::mpsc::Sender<AppendRequest>,
+    server_state: Arc<ServerState>,
 ) -> Result<Response<Body>, BoxedError> {
     let path_parts = parse_path_parts(req.uri().path());
 
@@ -94,7 +97,7 @@ async fn handle(
         }
         (&Method::POST, ["topic", name, "items"]) => {
             let name = name.to_string();
-            append_item(req, append_writer, name.as_ref()).await
+            append_item(req, server_state, name.as_ref()).await
         }
         _ => Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)
@@ -105,29 +108,23 @@ async fn handle(
 
 #[tokio::main]
 async fn main() {
-    let (append_writer, append_recv) = tokio::sync::mpsc::channel::<AppendRequest>(1);
+    let server_state = Arc::new(ServerState {
+        topics: RwLock::new(HashMap::new()),
+    });
 
     let make_svc = make_service_fn(move |_conn| {
-        let append_writer = append_writer.clone();
+        let server_state = server_state.clone();
         async move {
             Ok::<_, BoxedError>(service_fn(move |req| {
-                let append_writer = append_writer.clone();
-                handle(req, append_writer)
+                let server_state = server_state.clone();
+                handle(req, server_state)
             }))
         }
     });
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
-    let (handle_appends_result, server_result) = tokio::join!(
-        appendqueue::handle_appends(append_recv),
-        Server::bind(&addr).serve(make_svc)
-    );
-
-    if let Err(e) = server_result {
+    if let Err(e) = Server::bind(&addr).serve(make_svc).await {
         eprintln!("server error: {}", e);
-    }
-    if let Err(e) = handle_appends_result {
-        eprintln!("Append handler error: {}", e);
     }
 }

@@ -15,7 +15,7 @@ pub struct Writer {
 
 #[derive(Debug)]
 pub enum Error {
-    Io(Box<dyn std::error::Error>),
+    Io(Box<dyn std::error::Error + Send + Sync>),
     /// Log items are limited to 2^32 bytes.
     ItemTooLarge,
 }
