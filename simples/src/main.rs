@@ -4,6 +4,7 @@ mod topicname;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::ops::DerefMut;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -56,6 +57,51 @@ async fn create_topic(_req: Request<Body>, name: &str) -> Result<Response<Body>,
         .body(body.into())?)
 }
 
+async fn open_or_create_topic_state(
+    server_state: &ServerState,
+    topic_name: &TopicName,
+) -> Result<Option<Arc<TopicState>>, BoxedError> {
+    {
+        if let Some(topic_state) = server_state.topics.read().await.get(topic_name) {
+            return Ok(Some(topic_state.clone()));
+        }
+    }
+
+    let topic_path = Path::new("topics").join(topic_name.to_str());
+    let metadata = tokio::fs::metadata(&topic_path).await;
+    if metadata.is_ok() {
+        let open_result = disklog::open_log(&topic_path).await?;
+        if open_result.recovered {
+            eprintln!("Recovered log: '{:?}'", topic_path);
+        }
+        let topic_state = Arc::new(TopicState {
+            writer: RwLock::new(open_result.writer),
+            reader_factory: open_result.reader_factory,
+        });
+        server_state
+            .topics
+            .write()
+            .await
+            .insert(topic_name.clone(), topic_state.clone());
+        Ok(Some(topic_state))
+    } else {
+        Ok(None)
+    }
+}
+
+async fn write_body(
+    writer: &mut disklog::writer::Writer,
+    body: Body,
+) -> Result<Response<Body>, BoxedError> {
+    // TODO replace me with AsyncRead body...
+    let mut contents: &[u8] = b"Hello World!";
+    println!("Writing body");
+    let pos = writer.append(&mut contents).await?;
+    Ok(Response::builder()
+        .header("Content-Type", "application/json")
+        .body(pos.to_string().into())?)
+}
+
 async fn append_item(
     req: Request<Body>,
     server_state: Arc<ServerState>,
@@ -70,16 +116,13 @@ async fn append_item(
         }
     };
 
-    if let Some(topic_state) = server_state.topics.read().await.get(&topic_name) {
+    if let Some(topic_state) = open_or_create_topic_state(&server_state, &topic_name).await? {
         let mut writer = topic_state.writer.write().await;
-        // TODO replace me with AsyncRead body...
-        let mut contents: &[u8] = b"Hello World!";
-        let pos = writer.append(&mut contents).await?;
-        Ok(Response::builder()
-            .header("Content-Type", "application/json")
-            .body(pos.to_string().into())?)
+        write_body(writer.deref_mut(), req.into_body()).await
     } else {
-        todo!("lock topics and add new topic state")
+        Ok(Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body("Topic not found".into())?)
     }
 }
 

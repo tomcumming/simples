@@ -16,7 +16,7 @@ pub type LogPosition = u64;
 
 #[derive(Debug)]
 pub enum OpenError {
-    Io(Box<dyn std::error::Error>),
+    Io(Box<dyn std::error::Error + Send + Sync>),
     CorruptTailPosition,
     /// Indicates a corrupt or mismatched logfile relative to the tail position file.
     LogTooSmall,
