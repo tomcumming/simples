@@ -96,7 +96,7 @@ async fn write_body(
     body: Body,
 ) -> Result<Response<Body>, BoxedError> {
     println!("Writing body");
-    let pos = writer.append(&mut BodyReader(body)).await?;
+    let pos = writer.append(&mut BodyReader::new(body)).await?;
     Ok(Response::builder()
         .header("Content-Type", "application/json")
         .body(pos.to_string().into())?)
