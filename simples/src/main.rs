@@ -1,4 +1,4 @@
-mod append;
+mod bodyreader;
 mod error;
 mod topicname;
 
@@ -13,6 +13,8 @@ use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use tokio::sync::RwLock;
 
 use disklog::LogPosition;
+
+use crate::bodyreader::BodyReader;
 
 use crate::error::{BoxedError, Error};
 use crate::topicname::TopicName;
@@ -93,10 +95,8 @@ async fn write_body(
     writer: &mut disklog::writer::Writer,
     body: Body,
 ) -> Result<Response<Body>, BoxedError> {
-    // TODO replace me with AsyncRead body...
-    let mut contents: &[u8] = b"Hello World!";
     println!("Writing body");
-    let pos = writer.append(&mut contents).await?;
+    let pos = writer.append(&mut BodyReader(body)).await?;
     Ok(Response::builder()
         .header("Content-Type", "application/json")
         .body(pos.to_string().into())?)
