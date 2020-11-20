@@ -1,9 +1,7 @@
-use std::pin::Pin;
-use std::task::{Context, Poll};
-
 use hyper::body::Bytes;
 use hyper::Body;
 
+use disklog::reader;
 use disklog::LogPosition;
 
 use crate::query::ParsedQuery;
@@ -14,6 +12,7 @@ pub struct ReadOptions {
     pub end_before: Option<LogPosition>,
     pub end_after: Option<LogPosition>,
     pub max_items: Option<usize>,
+    pub wait_for_more: bool,
 }
 
 impl ReadOptions {
@@ -23,6 +22,7 @@ impl ReadOptions {
             end_before: None,
             end_after: None,
             max_items: None,
+            wait_for_more: false,
         };
         for (k, v) in query.drain() {
             match k {
@@ -30,6 +30,7 @@ impl ReadOptions {
                 "end_before" => options.end_before = Some(v.parse().ok()?),
                 "end_after" => options.end_after = Some(v.parse().ok()?),
                 "max_items" => options.max_items = Some(v.parse().ok()?),
+                "wait_for_more" => options.wait_for_more = v.parse().ok()?,
                 _ => None?,
             }
         }
@@ -37,25 +38,50 @@ impl ReadOptions {
     }
 }
 
-struct ReaderStream {
-    reader: disklog::reader::Reader,
+enum ReaderStream {
+    Between(ReadOptions, reader::Reader),
+    Reading(ReadOptions, reader::LogItem),
+}
+
+async fn read_log_item_bytes(
     options: ReadOptions,
+    log_item: reader::LogItem,
+) -> Result<(Bytes, ReaderStream), BoxedError> {
+    todo!()
 }
 
-impl tokio::stream::Stream for ReaderStream {
-    type Item = Result<Bytes, BoxedError>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        todo!()
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        todo!()
+async fn unfold_readerstream(
+    rs: ReaderStream,
+) -> Result<Option<(Bytes, ReaderStream)>, BoxedError> {
+    match rs {
+        ReaderStream::Between(options, reader) => {
+            let end = options.max_items == Some(0)
+                || options.end_before == Some(reader.position())
+                || options
+                    .end_after
+                    .map_or(false, |pos| pos < reader.position());
+            if end {
+                Ok(None)
+            } else {
+                match reader.next(options.wait_for_more).await? {
+                    reader::NextItem::Item(log_item) => {
+                        read_log_item_bytes(options, log_item).await.map(Some)
+                    }
+                    reader::NextItem::End(_) => Ok(None),
+                }
+            }
+        }
+        ReaderStream::Reading(options, log_item) => {
+            read_log_item_bytes(options, log_item).await.map(Some)
+        }
     }
 }
 
-pub fn read_to_body(reader: disklog::reader::Reader, options: ReadOptions) -> Body {
-    Body::wrap_stream(ReaderStream { reader, options })
+pub fn read_to_body(reader: reader::Reader, options: ReadOptions) -> Body {
+    let stream =
+        futures::stream::try_unfold(ReaderStream::Between(options, reader), unfold_readerstream);
+
+    Body::wrap_stream(stream)
 }
 
 #[cfg(test)]

@@ -44,6 +44,12 @@ pub struct Reader {
     state: ReaderState,
 }
 
+impl Reader {
+    pub fn position(&self) -> LogPosition {
+        self.state.pos
+    }
+}
+
 pub struct LogItem {
     start_pos: LogPosition,
     len: u32,
@@ -61,6 +67,10 @@ impl LogItem {
     /// Returns the length of the contents in bytes.
     pub fn len(&self) -> u32 {
         self.len
+    }
+
+    pub fn left_to_read(&self) -> usize {
+        self.len as usize - self.read
     }
 
     pub fn is_empty(&self) -> bool {
@@ -84,7 +94,7 @@ impl<'a> AsyncRead for LogItem {
     ) -> Poll<std::io::Result<()>> {
         // There must be a better way to do this?
         let length_before = buf.filled().len();
-        let left_to_read: usize = (self.len as usize) - self.read;
+        let left_to_read = self.left_to_read();
         let mut limited_file = (&mut self.file).take(left_to_read as u64);
         let pinned_file = Pin::new(&mut limited_file);
         let res = pinned_file.poll_read(cx, buf);
