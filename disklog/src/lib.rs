@@ -17,6 +17,7 @@ pub type LogPosition = u64;
 #[derive(Debug)]
 pub enum OpenError {
     Io(Box<dyn std::error::Error + Send + Sync>),
+    AlreadyOpen,
     CorruptTailPosition,
     /// Indicates a corrupt or mismatched logfile relative to the tail position file.
     LogTooSmall,
@@ -26,6 +27,7 @@ impl std::fmt::Display for OpenError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             OpenError::Io(e) => e.fmt(f),
+            OpenError::AlreadyOpen => write!(f, "The log is already open"),
             OpenError::CorruptTailPosition => write!(f, "Corrupt tail position"),
             OpenError::LogTooSmall => write!(f, "Log file was smalled than expected"),
         }

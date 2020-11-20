@@ -4,16 +4,16 @@ use tempdir::TempDir;
 async fn exclusive_write_access() {
     let temp_dir = TempDir::new("test-db").unwrap();
 
-    let disklog::OpenedLog {
-        writer,
-        reader_factory,
-        recovered,
-    } = disklog::open_log(&temp_dir).await.unwrap();
+    let opened = disklog::open_log(&temp_dir).await.unwrap();
 
-    if let Ok(_) = disklog::open_log(&temp_dir).await {
-        panic!("Opened log for writing twice!");
-    }
+    match disklog::open_log(&temp_dir).await {
+        Ok(_) => panic!("Opened log for writing twice!"),
+        Err(disklog::OpenError::AlreadyOpen) => {}
+        Err(_) => panic!("Second open failed for wrong reason"),
+    };
 
-    // Ensure first writer is still alive
-    std::mem::drop(writer);
+    std::mem::drop(opened);
+
+    // second open should succeed
+    disklog::open_log(&temp_dir).await.unwrap();
 }

@@ -1,3 +1,4 @@
+use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 
 use tokio::fs::File;
@@ -47,6 +48,12 @@ pub async fn open_tail_file(path: &Path) -> Result<(tokio::fs::File, LogPosition
         .open(tail_file_path)
         .await
         .map_err(|e| OpenError::Io(Box::new(e)))?;
+
+    nix::fcntl::flock(
+        tail_file.as_raw_fd(),
+        nix::fcntl::FlockArg::LockExclusiveNonblock,
+    )
+    .map_err(|_| OpenError::AlreadyOpen)?;
 
     let mut contents = Vec::new();
     tail_file
