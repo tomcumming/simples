@@ -1,7 +1,13 @@
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+use hyper::body::Bytes;
+use hyper::Body;
+
 use disklog::LogPosition;
 
 use crate::query::ParsedQuery;
-use hyper::Body;
+use crate::BoxedError;
 
 pub struct ReadOptions {
     pub from: Option<LogPosition>,
@@ -31,8 +37,25 @@ impl ReadOptions {
     }
 }
 
+struct ReaderStream {
+    reader: disklog::reader::Reader,
+    options: ReadOptions,
+}
+
+impl tokio::stream::Stream for ReaderStream {
+    type Item = Result<Bytes, BoxedError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        todo!()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        todo!()
+    }
+}
+
 pub fn read_to_body(reader: disklog::reader::Reader, options: ReadOptions) -> Body {
-    todo!()
+    Body::wrap_stream(ReaderStream { reader, options })
 }
 
 #[cfg(test)]
