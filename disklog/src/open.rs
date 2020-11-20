@@ -61,7 +61,7 @@ pub async fn open_tail_file(path: &Path) -> Result<(tokio::fs::File, LogPosition
         .await
         .map_err(|e| OpenError::Io(Box::new(e)))?;
 
-    let position: LogPosition = if contents.len() == 0 {
+    let position: LogPosition = if contents.is_empty() {
         let zero = 0u64;
 
         for _ in 0usize..3 {
@@ -75,7 +75,7 @@ pub async fn open_tail_file(path: &Path) -> Result<(tokio::fs::File, LogPosition
     } else if contents.len() == U64SIZE * 3 {
         read_log_position(&mut tail_file).await?
     } else {
-        Err(OpenError::CorruptTailPosition)?
+        return Err(OpenError::CorruptTailPosition);
     };
     Ok((tail_file, position))
 }
@@ -105,7 +105,7 @@ pub async fn open_log_file(
         .map_err(|e| OpenError::Io(Box::new(e)))?;
 
     if actual_tail_pos < expected_tail_pos {
-        Err(OpenError::LogTooSmall)?;
+        return Err(OpenError::LogTooSmall);
     }
 
     Ok((log_file, actual_tail_pos > expected_tail_pos))

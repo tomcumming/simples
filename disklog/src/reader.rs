@@ -34,31 +34,49 @@ pub struct ReaderFactory {
     pub(crate) tail_recv: tokio::sync::watch::Receiver<LogPosition>,
 }
 
-pub struct Reader {
-    file: File,
+struct ReaderState {
     tail_recv: tokio::sync::watch::Receiver<LogPosition>,
     pos: LogPosition,
 }
 
-pub struct LogItem<'a> {
-    pos: LogPosition,
-    len: u32,
-    read: usize,
-    file: &'a mut File,
+pub struct Reader {
+    file: File,
+    state: ReaderState,
 }
 
-impl LogItem<'_> {
+pub struct LogItem {
+    start_pos: LogPosition,
+    len: u32,
+    read: usize,
+    file: File,
+
+    reader_state: ReaderState,
+}
+
+impl LogItem {
     pub fn position(&self) -> LogPosition {
-        self.pos
+        self.start_pos
     }
 
     /// Returns the length of the contents in bytes.
     pub fn len(&self) -> u32 {
         self.len
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Finish with the log item so we can recover the reader to fetch the next.
+    pub fn finish(self) -> Reader {
+        Reader {
+            file: self.file,
+            state: self.reader_state,
+        }
+    }
 }
 
-impl<'a> AsyncRead for LogItem<'a> {
+impl<'a> AsyncRead for LogItem {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -67,7 +85,7 @@ impl<'a> AsyncRead for LogItem<'a> {
         // There must be a better way to do this?
         let length_before = buf.filled().len();
         let left_to_read: usize = (self.len as usize) - self.read;
-        let mut limited_file = self.file.take(left_to_read as u64);
+        let mut limited_file = (&mut self.file).take(left_to_read as u64);
         let pinned_file = Pin::new(&mut limited_file);
         let res = pinned_file.poll_read(cx, buf);
         let length_after = buf.filled().len();
@@ -88,8 +106,10 @@ impl ReaderFactory {
 
         Ok(Reader {
             file,
-            tail_recv,
-            pos: position,
+            state: ReaderState {
+                tail_recv,
+                pos: position,
+            },
         })
     }
 }
@@ -105,42 +125,67 @@ async fn read_log_item_size(file: &mut File, position: LogPosition) -> Result<u3
     }
 }
 
+pub enum NextItem {
+    Item(LogItem),
+    End(Reader),
+}
+
+impl NextItem {
+    pub fn unwrap(self) -> LogItem {
+        match self {
+            NextItem::Item(item) => item,
+            NextItem::End(_) => panic!("Unwrapped an End"),
+        }
+    }
+
+    pub fn is_end(&self) -> bool {
+        match self {
+            NextItem::Item(_) => false,
+            NextItem::End(_) => true,
+        }
+    }
+}
+
 impl Reader {
-    async fn read_item<'a>(&'a mut self) -> Result<LogItem<'a>, Error> {
+    async fn read_item(self) -> Result<LogItem, Error> {
+        let Reader { mut file, state } = self;
+
         // Might not have read entire item last time
-        self.file
-            .seek(SeekFrom::Start(self.pos))
+        file.seek(SeekFrom::Start(state.pos))
             .await
             .map_err(|e| Error::Io(Box::new(e)))?;
-        let len = read_log_item_size(&mut self.file, self.pos).await?;
-        let last_pos = self.pos;
+        let len = read_log_item_size(&mut file, state.pos).await?;
 
-        self.pos = self.pos + 2 + 4 + (len as u64);
+        let next_pos = state.pos + 2 + 4 + (len as u64);
 
         Ok(LogItem {
-            pos: last_pos,
-            file: &mut self.file,
+            start_pos: state.pos,
+            file,
             read: 0,
             len,
+            reader_state: ReaderState {
+                pos: next_pos,
+                tail_recv: state.tail_recv,
+            },
         })
     }
 
-    pub async fn next<'a>(&'a mut self, wait_for_more: bool) -> Result<Option<LogItem<'a>>, Error> {
-        let mut log_tail: LogPosition = *self.tail_recv.borrow();
+    pub async fn next<'a>(mut self, wait_for_more: bool) -> Result<NextItem, Error> {
+        let mut log_tail: LogPosition = *self.state.tail_recv.borrow();
 
-        while log_tail <= self.pos && wait_for_more {
-            match self.tail_recv.changed().await {
-                Err(_) => return Ok(None),
+        while log_tail <= self.state.pos && wait_for_more {
+            match self.state.tail_recv.changed().await {
+                Err(_) => return Ok(NextItem::End(self)),
                 Ok(()) => {
-                    log_tail = *self.tail_recv.borrow();
+                    log_tail = *self.state.tail_recv.borrow();
                 }
             }
         }
 
-        if self.pos < log_tail {
-            self.read_item().await.map(|li| Some(li))
+        if self.state.pos < log_tail {
+            self.read_item().await.map(NextItem::Item)
         } else {
-            Ok(None)
+            Ok(NextItem::End(self))
         }
     }
 }

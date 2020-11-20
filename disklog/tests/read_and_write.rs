@@ -33,10 +33,11 @@ async fn reader_dont_wait(
         let mut contents = String::new();
         item.read_to_string(&mut contents).await.unwrap();
         assert_eq!(*msg, contents);
+        reader = item.finish();
     }
 
     assert!(
-        reader.next(false).await.unwrap().is_none(),
+        reader.next(false).await.unwrap().is_end(),
         "Should have reached end of reader"
     );
 
@@ -55,24 +56,25 @@ async fn reader_wait(
         let mut contents = String::new();
         item.read_to_string(&mut contents).await.unwrap();
         assert_eq!(*msg, contents);
+        reader = item.finish();
     }
 
-    {
-        let task = future::maybe_done(reader.next(true));
-        tokio::pin!(task);
-        assert!(
-            task.take_output().is_none(),
-            "Should be waiting for next item"
-        );
-    }
+    let task = future::maybe_done(reader.next(true));
+    tokio::pin!(task);
+    assert!(
+        task.as_mut().take_output().is_none(),
+        "Should be waiting for next item"
+    );
 
     last_barrier.wait().await;
 
     {
-        let mut item = reader.next(true).await.unwrap().unwrap();
+        task.as_mut().await;
+        let mut item = task.take_output().unwrap().unwrap().unwrap();
         let mut contents = String::new();
         item.read_to_string(&mut contents).await.unwrap();
         assert_eq!(LAST_MSG, contents);
+        reader = item.finish();
     }
 
     {
