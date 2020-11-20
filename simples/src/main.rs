@@ -17,8 +17,8 @@ use tokio::sync::RwLock;
 use disklog::LogPosition;
 
 use crate::bodyreader::BodyReader;
-
 use crate::error::{BoxedError, Error};
+use crate::read::ReadOptions;
 use crate::topicname::TopicName;
 
 struct TopicState {
@@ -128,6 +128,39 @@ async fn append_item(
     }
 }
 
+async fn read_items(
+    req: Request<Body>,
+    server_state: Arc<ServerState>,
+    name: &str,
+) -> Result<Response<Body>, BoxedError> {
+    let options = query::parse_query_string(req.uri().query().unwrap_or(""))
+        .and_then(ReadOptions::from_query);
+    let topic_name = match topicname::TopicName::parse(name) {
+        Some(topic_name) => topic_name,
+        None => {
+            return Ok(Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body("Invalid topic name".into())?)
+        }
+    };
+
+    if let Some(options) = options {
+        if let Some(topic_state) = open_or_create_topic_state(&server_state, &topic_name).await? {
+            let from = options.from.unwrap_or(0);
+            let reader = topic_state.reader_factory.read_from(from).await?;
+            Ok(Response::new(read::read_to_body(reader, options)))
+        } else {
+            Ok(Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body("Topic not found".into())?)
+        }
+    } else {
+        Ok(Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body("Could not read options".into())?)
+    }
+}
+
 async fn handle(
     req: Request<Body>,
     server_state: Arc<ServerState>,
@@ -143,6 +176,10 @@ async fn handle(
         (&Method::POST, ["topic", name, "items"]) => {
             let name = name.to_string();
             append_item(req, server_state, name.as_ref()).await
+        }
+        (&Method::GET, ["topic", name, "items"]) => {
+            let name = name.to_string();
+            read_items(req, server_state, name.as_ref()).await
         }
         _ => Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)

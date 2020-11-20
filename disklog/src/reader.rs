@@ -13,7 +13,7 @@ use crate::LogPosition;
 
 #[derive(Debug)]
 pub enum Error {
-    Io(Box<dyn std::error::Error>),
+    Io(Box<dyn std::error::Error + Sync + Send>),
     /// Indicates that a read position was not aligned to an item, or the log is corrupt.
     InvalidItemChecksum,
 }

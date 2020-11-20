@@ -1,12 +1,13 @@
 use disklog::LogPosition;
 
 use crate::query::ParsedQuery;
+use hyper::Body;
 
 pub struct ReadOptions {
-    from: Option<LogPosition>,
-    end_before: Option<LogPosition>,
-    end_after: Option<LogPosition>,
-    max_items: Option<usize>,
+    pub from: Option<LogPosition>,
+    pub end_before: Option<LogPosition>,
+    pub end_after: Option<LogPosition>,
+    pub max_items: Option<usize>,
 }
 
 impl ReadOptions {
@@ -28,6 +29,10 @@ impl ReadOptions {
         }
         Some(options)
     }
+}
+
+pub fn read_to_body(reader: disklog::reader::Reader, options: ReadOptions) -> Body {
+    todo!()
 }
 
 #[cfg(test)]
