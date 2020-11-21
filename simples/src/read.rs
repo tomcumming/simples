@@ -1,5 +1,7 @@
+use bytes::BufMut;
 use hyper::body::Bytes;
 use hyper::Body;
+use tokio::io::AsyncReadExt;
 
 use disklog::reader;
 use disklog::LogPosition;
@@ -16,7 +18,7 @@ pub struct ReadOptions {
 }
 
 impl ReadOptions {
-    pub fn from_query<'a>(mut query: ParsedQuery<'a>) -> Option<ReadOptions> {
+    pub fn from_query(mut query: ParsedQuery) -> Option<ReadOptions> {
         let mut options = ReadOptions {
             from: None,
             end_before: None,
@@ -44,10 +46,27 @@ enum ReaderStream {
 }
 
 async fn read_log_item_bytes(
+    start_new_item: bool,
     options: ReadOptions,
-    log_item: reader::LogItem,
+    mut log_item: reader::LogItem,
 ) -> Result<(Bytes, ReaderStream), BoxedError> {
-    todo!()
+    let mut buf = Vec::new();
+    if start_new_item {
+        buf.put_u64(log_item.position());
+        buf.put_u32(log_item.len());
+    }
+    log_item.read_buf(&mut buf).await?;
+
+    let body_bytes = hyper::body::Bytes::from(buf);
+
+    if log_item.left_to_read() == 0 {
+        Ok((
+            body_bytes,
+            ReaderStream::Between(options, log_item.finish()),
+        ))
+    } else {
+        Ok((body_bytes, ReaderStream::Reading(options, log_item)))
+    }
 }
 
 async fn unfold_readerstream(
@@ -65,15 +84,15 @@ async fn unfold_readerstream(
             } else {
                 match reader.next(options.wait_for_more).await? {
                     reader::NextItem::Item(log_item) => {
-                        read_log_item_bytes(options, log_item).await.map(Some)
+                        read_log_item_bytes(true, options, log_item).await.map(Some)
                     }
                     reader::NextItem::End(_) => Ok(None),
                 }
             }
         }
-        ReaderStream::Reading(options, log_item) => {
-            read_log_item_bytes(options, log_item).await.map(Some)
-        }
+        ReaderStream::Reading(options, log_item) => read_log_item_bytes(false, options, log_item)
+            .await
+            .map(Some),
     }
 }
 
