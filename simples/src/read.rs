@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn parse_all_options() {
-        let qs = "from=1&end_before=2&end_after=3&max_items=4";
+        let qs = "from=1&end_before=2&end_after=3&max_items=4&wait_for_more=true";
         let options = parse_query_string(qs)
             .and_then(ReadOptions::from_query)
             .expect("Valid parse");
@@ -119,5 +119,6 @@ mod tests {
         assert_eq!(Some(2), options.end_before);
         assert_eq!(Some(3), options.end_after);
         assert_eq!(Some(4), options.max_items);
+        assert_eq!(true, options.wait_for_more);
     }
 }
