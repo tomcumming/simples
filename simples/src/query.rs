@@ -9,8 +9,8 @@ pub fn parse_query_string<'a>(query_string: &'a str) -> Option<ParsedQuery<'a>> 
 
     let mut result: ParsedQuery<'a> = HashMap::new();
 
-    for pair in query_string.split("&") {
-        if let [k, v] = *pair.split("=").collect::<Box<[_]>>() {
+    for pair in query_string.split('&') {
+        if let [k, v] = *pair.split('=').collect::<Box<[_]>>() {
             if result.contains_key(k) {
                 return None;
             } else {

@@ -14,10 +14,8 @@ use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use tokio::sync::RwLock;
 
-use disklog::LogPosition;
-
 use crate::bodyreader::BodyReader;
-use crate::error::{BoxedError, Error};
+use crate::error::BoxedError;
 use crate::read::ReadOptions;
 use crate::topicname::TopicName;
 
@@ -30,8 +28,11 @@ struct ServerState {
     topics: RwLock<HashMap<TopicName, Arc<TopicState>>>,
 }
 
+const INVALID_TOPIC_NAME: &str = "Invalid topic name";
+const TOPIC_NOT_FOUND: &str = "Topic not found";
+
 fn parse_path_parts<'a>(path: &'a str) -> Box<[&'a str]> {
-    let mut path_parts = path.split("/").skip(1).collect::<Vec<_>>();
+    let mut path_parts = path.split('/').skip(1).collect::<Vec<_>>();
     if path_parts.last() == Some(&"") {
         path_parts.pop();
     }
@@ -45,7 +46,14 @@ async fn index_page(_req: Request<Body>) -> Result<Response<Body>, BoxedError> {
 }
 
 async fn create_topic(_req: Request<Body>, name: &str) -> Result<Response<Body>, BoxedError> {
-    let topic_name = TopicName::parse(name).ok_or(Error::InvalidTopicName)?;
+    let topic_name = match topicname::TopicName::parse(name) {
+        Some(topic_name) => topic_name,
+        None => {
+            return Ok(Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(INVALID_TOPIC_NAME.into())?)
+        }
+    };
 
     let topic_path = Path::new("topics").join(topic_name.to_str());
 
@@ -114,7 +122,7 @@ async fn append_item(
         None => {
             return Ok(Response::builder()
                 .status(StatusCode::BAD_REQUEST)
-                .body("Invalid topic name".into())?)
+                .body(INVALID_TOPIC_NAME.into())?)
         }
     };
 
@@ -124,7 +132,7 @@ async fn append_item(
     } else {
         Ok(Response::builder()
             .status(StatusCode::BAD_REQUEST)
-            .body("Topic not found".into())?)
+            .body(TOPIC_NOT_FOUND.into())?)
     }
 }
 
@@ -140,7 +148,7 @@ async fn read_items(
         None => {
             return Ok(Response::builder()
                 .status(StatusCode::BAD_REQUEST)
-                .body("Invalid topic name".into())?)
+                .body(INVALID_TOPIC_NAME.into())?)
         }
     };
 
@@ -152,7 +160,7 @@ async fn read_items(
         } else {
             Ok(Response::builder()
                 .status(StatusCode::BAD_REQUEST)
-                .body("Topic not found".into())?)
+                .body(TOPIC_NOT_FOUND.into())?)
         }
     } else {
         Ok(Response::builder()
