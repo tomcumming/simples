@@ -73,7 +73,7 @@ async fn unfold_readerstream(
     rs: ReaderStream,
 ) -> Result<Option<(Bytes, ReaderStream)>, BoxedError> {
     match rs {
-        ReaderStream::Between(options, reader) => {
+        ReaderStream::Between(mut options, reader) => {
             let end = options.max_items == Some(0)
                 || options.end_before == Some(reader.position())
                 || options
@@ -82,6 +82,7 @@ async fn unfold_readerstream(
             if end {
                 Ok(None)
             } else {
+                options.max_items = options.max_items.map(|max_items| max_items - 1);
                 match reader.next(options.wait_for_more).await? {
                     reader::NextItem::Item(log_item) => {
                         read_log_item_bytes(true, options, log_item).await.map(Some)
