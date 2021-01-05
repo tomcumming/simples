@@ -5,8 +5,7 @@ use std::task::Poll;
 
 use hyper::body::{Bytes, HttpBody};
 use hyper::Body;
-use tokio::io::ReadBuf;
-use tokio::prelude::AsyncRead;
+use tokio::io::{AsyncRead, ReadBuf};
 
 pub struct BodyReader {
     body: Body,

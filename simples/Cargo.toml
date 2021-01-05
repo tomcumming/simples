@@ -8,8 +8,8 @@ edition = "2018"
 
 [dependencies]
 disklog = { path = "../disklog" }
-tokio = { version = "0.3.4", features = ["full"] }
+tokio = { version = "1.0.1", features = ["full"] }
 # TODO pin to next release so we can use tokio 0.3
-hyper = { git = "https://github.com/hyperium/hyper", rev = "121c33132c0950aaa422848cdc43f6691ddf5785", features= ["stream", "tcp", "server", "http1"] }
+hyper = { version = "0.14.2", features= ["stream", "tcp", "server", "http1"] }
 futures = "0.3.8"
-bytes = "0.6.0"
+bytes = "1.0.0"
