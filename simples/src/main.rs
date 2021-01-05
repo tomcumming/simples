@@ -1,11 +1,11 @@
 mod bodyreader;
 mod error;
+mod config;
 mod query;
 mod read;
 mod topicname;
 
 use std::collections::HashMap;
-use std::net::SocketAddr;
 use std::ops::DerefMut;
 use std::path::Path;
 use std::sync::Arc;
@@ -198,6 +198,24 @@ async fn handle(
 
 #[tokio::main]
 async fn main() {
+    let config = match config::Config::from_env() {
+        Ok(config) => config,
+        Err(error) => {
+            eprintln!("Error when reading config: {}", error);
+            std::process::exit(1);
+        }
+    };
+
+    let addr: std::net::SocketAddr = match config.address.parse() {
+        Ok(addr) => addr,
+        Err(error) => {
+            eprintln!("Error parsing address '{}': {}", config.address, error);
+            std::process::exit(1);
+        }
+    };
+
+    println!("Launching simples {} on {}:{}", env!("CARGO_PKG_VERSION"), addr.ip(), addr.port());
+
     let server_state = Arc::new(ServerState {
         topics: RwLock::new(HashMap::new()),
     });
@@ -212,9 +230,8 @@ async fn main() {
         }
     });
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-
     if let Err(e) = Server::bind(&addr).serve(make_svc).await {
         eprintln!("server error: {}", e);
+        std::process::exit(1);
     }
 }

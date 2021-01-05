@@ -24,6 +24,14 @@ A tiny event sourcing database for prototype and small projects.
 - You want a simple API, usable from your language of choice.
 - You do not want the bother of setting up and configuring one of the bigger servers like [Kafka](http://kafka.apache.org/) or [Pulsar](https://pulsar.apache.org/).
 
+# Configuration
+
+To set the external address use the environment variable `SIMPLES_ADDRESS` like so:
+
+```bash
+SIMPLES_ADDRESS=127.0.0.1:1234 simples
+```
+
 # API
 
 ## Creating a topic

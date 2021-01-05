@@ -1,6 +1,6 @@
 [package]
 name = "simples"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Tom Cumming <mail@tomcumming.co.uk>"]
 edition = "2018"
 
