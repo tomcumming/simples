@@ -4,9 +4,8 @@ use std::task::Context;
 use std::task::Poll;
 
 use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt};
 use tokio::io::{ReadBuf, SeekFrom};
-use tokio::prelude::AsyncRead;
 
 use crate::checksum::calculate;
 use crate::LogPosition;

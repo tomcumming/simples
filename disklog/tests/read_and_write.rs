@@ -1,6 +1,6 @@
 use futures::future;
 use tempdir::TempDir;
-use tokio::prelude::*;
+use tokio::io::AsyncReadExt;
 use tokio::sync::Barrier;
 
 const FIRST_MSGS: [&str; 2] = ["Hello World", "Another Message"];

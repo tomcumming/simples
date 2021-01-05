@@ -1,7 +1,6 @@
 use std::convert::TryInto;
 
-use tokio::io::{AsyncSeekExt, AsyncWriteExt};
-use tokio::prelude::AsyncRead;
+use tokio::io::{AsyncRead, AsyncSeekExt, AsyncWriteExt};
 
 use crate::checksum;
 use crate::LogPosition;
